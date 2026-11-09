@@ -1,0 +1,8 @@
+{ "name":"fleetcare","private":true,
+  "engines":{"node":">=22.5.0"},
+  "scripts":{
+    "setup":"node scripts/setup.mjs",
+    "dev":"concurrently -k -n api,web -c blue,yellow \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "build":"npm --prefix client run build",
+    "preview":"concurrently -k -n api,web -c blue,yellow \"npm --prefix server run start\" \"npm --prefix client run preview\""},
+  "devDependencies":{"concurrently":"^9.1.0"} }

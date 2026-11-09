@@ -1,0 +1,14 @@
+# Directus CMS on top of the same SQLite file the Node API writes to.
+# Open http://localhost:8055 -> Settings > Data Model to manage requests, users, fees.
+services:
+  directus:
+    image: directus/directus:11
+    ports: ["8055:8055"]
+    volumes: ["./server/data:/directus/database"]
+    environment:
+      KEY: fleetcare-key-change-me
+      SECRET: fleetcare-secret-change-me
+      DB_CLIENT: sqlite3
+      DB_FILENAME: /directus/database/fleetcare.db
+      ADMIN_EMAIL: cms@fleetcare.local
+      ADMIN_PASSWORD: ChangeMe123!
