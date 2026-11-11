@@ -4,18 +4,29 @@ import { subscribe, send } from './socket';
 
 export default function Chat({ requestId, me }) {
   const [msgs, setMsgs] = useState([]), [text, setText] = useState(''), end = useRef();
+  
   useEffect(() => {
+    let unsubscribe = null;
     api(`/requests/${requestId}/messages`).then(setMsgs).catch(() => {});
-    return subscribe(m => { if (m.type === 'chat' && m.request_id === requestId) setMsgs(x => [...x, m]); });
+    unsubscribe = subscribe(m => { if (m.type === 'chat' && m.request_id === requestId) setMsgs(x => [...x, m]); });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, [requestId]);
-  useEffect(() => end.current?.scrollIntoView(), [msgs]);
-const go = () => { 
+
+  // Smooth auto-scroll when new messages arrive
+  useEffect(() => { 
+    end.current?.scrollIntoView({ behavior: 'smooth' }); 
+  }, [msgs]);
+
+  const go = () => { 
     const trimmed = text.trim();
     if (trimmed) { 
       send({ type: 'chat', requestId, body: trimmed }); 
       setText(''); 
     } 
   };
+
   return (
     <div className="chat">
       <div className="log">
@@ -27,5 +38,6 @@ const go = () => {
         <input value={text} placeholder="Type a message" onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} />
         <button onClick={go}>Send</button>
       </div>
-    </div>);
+    </div>
+  );
 }
