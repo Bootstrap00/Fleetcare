@@ -11,7 +11,11 @@ const STEPS = [['pending', 'Requested'], ['accepted', 'Accepted'], ['enroute', '
 
 export default function Track() {
   const { user, rows, sel, setSel, act, setEdit, fees } = useStore();
+  
+  if (!rows) return <div className="page"><div className="card empty">Loading tracking data...</div></div>;
+
   const [mech, setMech] = useState(null);
+  // ... rest of your code
   const list = rows.filter(r => r.mechanic_id && r.status !== 'cancelled');
   const cur = list.find(r => r.id === sel) || list.find(r => r.status !== 'completed') || list[0];
   const waiting = user.role === 'motorist' && !cur && rows.find(r => r.status === 'pending');
