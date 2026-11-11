@@ -9,7 +9,13 @@ export default function Chat({ requestId, me }) {
     return subscribe(m => { if (m.type === 'chat' && m.request_id === requestId) setMsgs(x => [...x, m]); });
   }, [requestId]);
   useEffect(() => end.current?.scrollIntoView(), [msgs]);
-  const go = () => { if (text.trim()) { send({ type: 'chat', requestId, body: text }); setText(''); } };
+const go = () => { 
+    const trimmed = text.trim();
+    if (trimmed) { 
+      send({ type: 'chat', requestId, body: trimmed }); 
+      setText(''); 
+    } 
+  };
   return (
     <div className="chat">
       <div className="log">
