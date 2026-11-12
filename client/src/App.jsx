@@ -52,8 +52,7 @@ export function resolve(route, user) {
 function Toast() { const { msg, setMsg } = useStore(); return msg ? <div className="toast" role="status" onClick={() => setMsg('')}>{msg}</div> : null; }
 
 export default function App() {
-  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('fc_user') || 'null'));
-  const route = useHash();
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem(import.meta.env.VITE_STORAGE_KEY || 'fc_user') || 'null'));
   useCursorGlow();
   useEffect(() => { if (user) connect(); }, [user]);
   const r = resolve(route, user);
