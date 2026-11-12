@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { clearSession, setSession, token } from './api';
 import { connect, disconnect } from './socket';
 import { Store, useStore } from './store';
@@ -49,12 +49,11 @@ export function resolve(route, user) {
   return { redirect: '/' };
 }
 
-function Toast() { 
-   const { msg, setMsg } = useStore(); 
-   return msg ? <div className="toast" role="status" onClick={() => setMsg('')}>{msg}</div> : null; 
-}
+function Toast() { const { msg, setMsg } = useStore(); return msg ? <div className="toast" role="status" onClick={() => setMsg('')}>{msg}</div> : null; }
+
 export default function App() {
-  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem(import.meta.env.VITE_STORAGE_KEY || 'fc_user') || 'null'));
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('fc_user') || 'null'));
+  const route = useHash();
   useCursorGlow();
   useEffect(() => { if (user) connect(); }, [user]);
   const r = resolve(route, user);
@@ -65,10 +64,9 @@ export default function App() {
   const logout = () => { disconnect(); clearSession(); caches?.delete('fc-data-v1'); setUser(null); go('/'); };
   const body = (<>
     <Nav user={user} route={r.path || route} items={NAV[user?.role || 'guest']} onLogout={logout} />
-    <main key={r.path || route} className="p-6 bg-slate-950 text-white rounded-xl shadow-lg transition-all duration-200"><Page {...r.props} user={user} onAuth={u => { setUser(u); go('/dashboard'); }} /></main>
-    <footer><span className="foot-brand"><LogoMark size={26} /><Wordmark /></span><span>Multi-tier mechanic and roadside assistance platform — Empowering local communities</span></footer>
-    
+    <main key={r.path || route}><Page {...r.props} user={user} onAuth={u => { setUser(u); go('/dashboard'); }} /></main>
+    <footer><span className="foot-brand"><LogoMark size={26} /><Wordmark /></span><span>Multi-tier mechanic and roadside assistance platform</span></footer>
+    {user && <Toast />}
   </>);
-  
   return user ? <Store user={user} updateUser={updateUser}>{body}</Store> : body;
 }
