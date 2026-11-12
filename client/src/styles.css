@@ -86,6 +86,13 @@ label{display:grid;gap:.4rem;color:var(--mute);font-size:.9rem}.toggle{display:f
 footer{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;max-width:1160px;margin:0 auto;padding:2rem 1.2rem 3rem;border-top:1px solid var(--line);color:var(--mute);font-size:.9rem}footer b{color:var(--text)}
 .reveal{opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1)}.reveal.in{opacity:1;transform:none}
 
+/* auth */
+.auth-page{padding-top:7rem}.auth-shell{display:grid;grid-template-columns:1fr 1.1fr;gap:1.2rem;align-items:stretch;max-width:1100px;margin:0 auto;width:100%}.auth-side{display:grid;gap:1.2rem;padding:1.5rem;background:linear-gradient(180deg, rgba(var(--accent-rgb),.14), rgba(10,17,28,.82));border-color:rgba(var(--accent-rgb),.3);min-height:610px}.auth-side[data-role=mechanic]{background:linear-gradient(180deg, rgba(61,220,151,.14), rgba(10,17,28,.82));border-color:rgba(61,220,151,.3)}.auth-side[data-role=admin]{background:linear-gradient(180deg, rgba(177,140,255,.18), rgba(10,17,28,.82));border-color:rgba(177,140,255,.3)}
+.auth-side-copy{display:grid;gap:.8rem;align-content:start}.auth-side-copy h2{font-size:clamp(2rem,4vw,3rem);line-height:1.02;letter-spacing:-.04em;max-width:12ch}.auth-side-list{display:grid;gap:.8rem;margin-top:auto}.auth-side-list span{display:flex;align-items:center;gap:.7rem;padding:.8rem 1rem;border:1px solid rgba(255,255,255,.12);border-radius:16px;background:rgba(7,13,24,.28);color:var(--text)}.auth-side-list b{display:inline-grid;place-items:center;width:2rem;height:2rem;border-radius:50%;background:rgba(255,255,255,.08);color:var(--amber);font:600 .8rem var(--mono)}
+.auth-form-panel{display:grid;align-content:start;padding:1.6rem}.auth-form-body{padding-top:.2rem}.auth-alt-link{display:block;text-align:center;margin-top:.2rem}
+.auth-landing{display:grid;gap:1.2rem;padding:1.5rem}.auth-landing-copy{display:grid;gap:.4rem}.auth-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-top:.5rem}.chooser .tile{min-height:180px}
+@media(max-width:900px){.auth-shell{grid-template-columns:1fr}.auth-side{min-height:auto}}
+
 /* tracking */
 .map{height:340px;border-radius:20px;overflow:hidden;border:1px solid var(--line);margin-bottom:.8rem}
 .nomap{display:grid;gap:.6rem;padding:1rem;border:1px dashed var(--line);border-radius:20px;margin-bottom:.8rem}.coords{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
