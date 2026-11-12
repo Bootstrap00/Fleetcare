@@ -64,9 +64,11 @@ export default function App() {
   const logout = () => { disconnect(); clearSession(); caches?.delete('fc-data-v1'); setUser(null); go('/'); };
   const body = (<>
     <Nav user={user} route={r.path || route} items={NAV[user?.role || 'guest']} onLogout={logout} />
-    <main key={r.path || route}><Page {...r.props} user={user} onAuth={u => { setUser(u); go('/dashboard'); }} /></main>
+    <main key={r.path || route} className="p-6 bg-slate-950 text-white rounded-xl shadow-lg transition-all duration-200"><Page {...r.props} user={user} onAuth={u => { setUser(u); go('/dashboard'); }} /></main>
     <footer><span className="foot-brand"><LogoMark size={26} /><Wordmark /></span><span>Multi-tier mechanic and roadside assistance platform</span></footer>
     {user && <Toast />}
+    
   </>);
+  
   return user ? <Store user={user} updateUser={updateUser}>{body}</Store> : body;
 }
