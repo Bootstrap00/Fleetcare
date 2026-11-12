@@ -49,8 +49,10 @@ export function resolve(route, user) {
   return { redirect: '/' };
 }
 
-function Toast() { const { msg, setMsg } = useStore(); return msg ? <div className="toast" role="status" onClick={() => setMsg('')}>{msg}</div> : null; }
-
+function Toast() { 
+   const { msg, setMsg } = useStore(); 
+   return msg ? <div className="toast" role="status" onClick={() => setMsg('')}>{msg}</div> : null; 
+}
 export default function App() {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem(import.meta.env.VITE_STORAGE_KEY || 'fc_user') || 'null'));
   useCursorGlow();
