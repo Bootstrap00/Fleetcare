@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { clearSession, setSession, token } from './api';
 import { connect, disconnect } from './socket';
 import { Store, useStore } from './store';
