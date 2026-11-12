@@ -11,6 +11,12 @@ const ACTORS = [
   ['Mechanic', 'Jobs that come to you', [['07', 'Receive and accept jobs'], ['08', 'Update job status'], ['09', 'Complete job'], ['06', 'Register / log in']]],
   ['Administrator', 'Run the whole platform', [['10', 'Manage users and mechanics'], ['11', 'Manage services and fees'], ['12', 'Manage website content'], ['13', 'Generate reports'], ['14', 'Send email notifications']]],
 ];
+const FEATURES = [
+  ['Live dispatch', 'Alert the nearest certified mechanics in seconds to reduce downtime.'],
+  ['Trusted mechanics', 'Filter by verification, rating and real-time availability.'],
+  ['Secure payment', 'Support and service fees are paid in a smooth driver-safe flow.'],
+  ['Always on', 'Offline-ready workflows and push alerts keep updates moving.'],
+];
 
 export default function Landing({ user }) {
   const [c, setC] = useState({}), [stats, setStats] = useState(null), [fees, setFees] = useState(null), [news, setNews] = useState([]);
@@ -29,6 +35,11 @@ export default function Landing({ user }) {
           <button className="btn ghost" onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })}>How it works</button>
         </div>
         {!user && <p className="muted portal-links">Mechanic? <a href="#/login/mechanic">Sign in here</a> · Staff? <a href="#/login/admin">Admin login</a></p>}
+        <div className="hero-metrics" aria-label="Platform overview">
+          <div className="metric-pill"><strong>24/7</strong><span>Live dispatch</span></div>
+          <div className="metric-pill"><strong>4.8/5</strong><span>Member rating</span></div>
+          <div className="metric-pill"><strong>3 min</strong><span>Avg. response</span></div>
+        </div>
         {news[0] && <div className="notice"><b>{news[0].title}</b> {news[0].body}</div>}
       </div>
     </section>
@@ -38,7 +49,20 @@ export default function Landing({ user }) {
     <section className="sec">
       <div className="grid g3 stats">
         {[[stats?.mechanics, 'Certified mechanics'], [stats?.jobs, 'Jobs completed'], [stats?.rating ? stats.rating + ' / 5' : null, 'Average rating']].map(([v, l], i) =>
-          <Reveal key={l} delay={i * 90} className="card stat"><b>{v ?? '—'}</b><span>{l}</span></Reveal>)}
+          <Reveal key={l} delay={i * 90} className="card stat highlight"><b>{v ?? '—'}</b><span>{l}</span></Reveal>)}
+      </div>
+    </section>
+
+    <section className="sec">
+      <Reveal><span className="eyebrow">Why drivers choose FleetCare</span><h2>Fast, trusted roadside help built for real-life breakdowns.</h2></Reveal>
+      <div className="grid g4 feature-grid">
+        {FEATURES.map(([title, desc], i) => (
+          <Reveal key={title} delay={i * 80} className="card feature-card">
+            <span className="feature-icon">{i + 1}</span>
+            <h3>{title}</h3>
+            <p>{desc}</p>
+          </Reveal>
+        ))}
       </div>
     </section>
 
