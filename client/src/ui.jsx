@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 const role = () => { try { return JSON.parse(localStorage.getItem('fc_user'))?.role || null; } catch { return null; } };
 // Portal pages live under /motorist, /mechanic or /admin. '/dashboard' is the portal home.
-export const path = p => (p === '/' || p.startsWith('/login') || !role() ? p : `/${role()}${p === '/dashboard' ? '' : p}`);
+export const path = p => (p === '/' || p.startsWith('/login') || p.startsWith('/mechanics') || !role() ? p : `/${role()}${p === '/dashboard' ? '' : p}`);
 export const href = p => '#' + path(p);
 export const go = p => { location.hash = path(p); };
 export const peso = n => '₱' + Number(n ?? 0).toLocaleString();
@@ -51,3 +51,15 @@ export const Badge = ({ s }) => <span className={'badge ' + s}>{s}</span>;
 export const PageHead = ({ eyebrow, title, sub, children }) => (
   <header className="page-head"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1>{sub && <p className="lead">{sub}</p>}</div>{children}</header>);
 export const Empty = ({ title, children }) => <div className="card empty"><div className="radar" /><h3>{title}</h3>{children}</div>;
+
+// Password field with an eye button that shows / hides what was typed.
+export function PasswordInput(props) {
+  const [show, setShow] = useState(false);
+  return (<span className="pw-wrap">
+    <input {...props} type={show ? 'text' : 'password'} />
+    <button type="button" className="pw-eye" onClick={() => setShow(s => !s)} aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show} title={show ? 'Hide password' : 'Show password'}>
+      {show
+        ? <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 20C5 20 1 12 1 12a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A10.9 10.9 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>
+        : <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
+    </button></span>);
+}

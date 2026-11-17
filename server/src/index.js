@@ -37,8 +37,27 @@ const socks = new Map();
 const emit = (uid, msg) => socks.get(uid)?.forEach(w => w.send(JSON.stringify(msg)));
 const Q = `SELECT r.*, m.name mechanic_name, m.lat mechanic_lat, m.lng mechanic_lng, m.avatar_at mechanic_avatar, u.name motorist_name, u.avatar_at motorist_avatar,
   (SELECT ROUND(AVG(stars),1) FROM ratings WHERE mechanic_id=r.mechanic_id) mechanic_rating,
-  (SELECT stars FROM ratings WHERE request_id=r.id) my_rating
+  (SELECT stars FROM ratings WHERE request_id=r.id) my_rating,
+  (SELECT comment FROM ratings WHERE request_id=r.id) my_comment,
+  (SELECT group_concat(id) FROM photos WHERE request_id=r.id AND source='review') review_photo_ids,
+  (SELECT id FROM payments WHERE request_id=r.id ORDER BY id DESC LIMIT 1) payment_id,
+  (SELECT reference FROM payments WHERE request_id=r.id ORDER BY id DESC LIMIT 1) payment_reference,
+  (SELECT provider_session IS NOT NULL FROM payments WHERE request_id=r.id ORDER BY id DESC LIMIT 1) payment_online,
+  (SELECT provider_url FROM payments WHERE request_id=r.id ORDER BY id DESC LIMIT 1) payment_url
   FROM requests r LEFT JOIN users m ON m.id=r.mechanic_id LEFT JOIN users u ON u.id=r.motorist_id`;
+
+// ---- notifications: ONE place for in-app (saved + live over WebSocket), browser push and email.
+// `page` is the page inside the person's own portal, e.g. '/track' -> /motorist/track.
+// email/push can be turned off per event, and people can switch them off in their profile (in-app is always kept).
+function notify(uid, { type, title, body = '', page = '', email = true, push = true }) {
+  const u = getUser(uid);
+  if (!u || u.deleted_at) return;
+  const link = `/${u.role}${page}`, url = `${CLIENT}/#${link}`;
+  const id = Number(db.prepare('INSERT INTO notifications(user_id,type,title,body,link) VALUES(?,?,?,?,?)').run(uid, type, title, body, link).lastInsertRowid);
+  emit(uid, { type: 'notification', notification: { id, type, title, body, link, read: 0, created_at: new Date().toISOString().slice(0, 19).replace('T', ' ') } });
+  if (push && u.notify_push !== 0) notifyPush(uid, { title, body, url });
+  if (email && u.notify_email !== 0) notifyEmail(u.email, title, body, { label: 'Open FleetCare', url });
+}
 
 // ---- login protection: N failed attempts -> cooldown (in memory)
 const LOGIN_MAX = Number(process.env.LOGIN_MAX_ATTEMPTS) || 5, LOGIN_LOCK = Number(process.env.LOGIN_LOCK_SECONDS) || 30;
@@ -63,8 +82,7 @@ function expireStale() {
     const upd = getReq(r.id);
     emit(r.motorist_id, { type: 'request_update', request: upd });
     mechs.forEach(m => emit(m.id, { type: 'request_update', request: upd }));
-    notifyPush(r.motorist_id, { title: 'No mechanic available', body: 'Your request expired. Try again with a wider radius.' });
-    notifyEmail(getUser(r.motorist_id).email, 'Your FleetCare request expired', `No mechanic accepted request #${r.id} within ${TIMEOUT_MIN} minutes. You can resend it from My requests, ideally with a wider radius.`);
+    notify(r.motorist_id, { type: 'expired', title: 'No mechanic available', body: `No mechanic accepted request #${r.id} within ${TIMEOUT_MIN} minutes. Resend it from My requests, ideally with a wider radius.`, page: '/orders' });
   }
 }
 
@@ -77,7 +95,7 @@ app.post('/api/auth/register', (req, res) => {
   try {
     const id = db.prepare('INSERT INTO users(name,email,password,phone,role) VALUES(?,?,?,?,?)').run(name, email.toLowerCase(), bcrypt.hashSync(password, 10), phone || null, role).lastInsertRowid;
     const user = { id: Number(id), name, role };
-    if (role === 'mechanic') notifyEmail('admin@fleetcare.local', 'Mechanic awaiting certification', `${name} (${email}) registered as a mechanic.`);
+    if (role === 'mechanic') db.prepare("SELECT id FROM users WHERE role='admin' AND deleted_at IS NULL").all().forEach(a => notify(a.id, { type: 'mechanic_signup', title: 'Mechanic awaiting certification', body: `${name} (${email.toLowerCase()}) registered as a mechanic.`, page: '/users' }));
     res.json({ token: sign(user), user });
   } catch { res.status(409).json({ error: 'Email is already registered' }); }
 });
@@ -92,7 +110,7 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(401).json({ error: `Wrong email or password. ${left} attempt${left === 1 ? '' : 's'} left.`, attempts_left: left });
   }
   fails.delete(key);
-  if (req.body.portal && req.body.portal !== u.role) return res.status(403).json({ error: `This is a ${u.role} account. Please sign in through the ${u.role} portal.` });
+  // No role is sent on login: the account's own role (motorist, mechanic or admin) decides which dashboard opens.
   res.json({ token: sign(u), user: { id: u.id, name: u.name, role: u.role, avatar_at: u.avatar_at } });
 });
 // ---- forgot / reset password (emailed one-time link, valid 30 minutes)
@@ -129,7 +147,7 @@ app.post('/api/auth/reset', (req, res) => {
 });
 app.get('/api/me', auth(), (req, res) => {
   const u = getUser(req.user.id);
-  res.json({ id: u.id, name: u.name, role: u.role, email: u.email, phone: u.phone, avatar_at: u.avatar_at, created_at: u.created_at, verified: !!u.verified, ...db.prepare(`SELECT
+  res.json({ id: u.id, name: u.name, role: u.role, email: u.email, phone: u.phone, avatar_at: u.avatar_at, bio: u.bio, notify_email: u.notify_email !== 0, notify_push: u.notify_push !== 0, created_at: u.created_at, verified: !!u.verified, ...db.prepare(`SELECT
     (SELECT ROUND(AVG(stars),1) FROM ratings WHERE mechanic_id=?) rating,
     (SELECT COUNT(*) FROM requests WHERE mechanic_id=? AND status='completed') jobs,
     (SELECT COALESCE(SUM(main_fee),0) FROM requests WHERE mechanic_id=? AND paid=1) earned`).get(u.id, u.id, u.id) });
@@ -139,10 +157,11 @@ app.get('/api/me', auth(), (req, res) => {
 app.patch('/api/profile', auth(), (req, res) => {
   const u = getUser(req.user.id);
   const name = String(req.body.name ?? u.name).trim().slice(0, 80), phone = String(req.body.phone ?? u.phone ?? '').trim().slice(0, 30);
+  const bio = String(req.body.bio ?? u.bio ?? '').trim().slice(0, 300);
   const email = String(req.body.email ?? u.email).trim().toLowerCase();
   if (!name) return res.status(400).json({ error: 'Name cannot be empty' });
   if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
-  try { db.prepare('UPDATE users SET name=?,phone=?,email=? WHERE id=?').run(name, phone || null, email, u.id); }
+  try { db.prepare('UPDATE users SET name=?,phone=?,email=?,bio=? WHERE id=?').run(name, phone || null, email, bio || null, u.id); }
   catch { return res.status(409).json({ error: 'That email is already in use' }); }
   const user = { id: u.id, name, role: u.role };
   res.json({ token: sign(user), user });
@@ -182,8 +201,27 @@ app.patch('/api/users/:id/active', auth(['admin']), (req, res) => { // UC-10: de
   res.json({ ok: true });
 });
 app.patch('/api/users/:id/verify', auth(['admin']), (req, res) => {
+  const was = getUser(req.params.id)?.verified;
   db.prepare("UPDATE users SET verified=? WHERE id=? AND role='mechanic'").run(req.body.verified ? 1 : 0, req.params.id);
+  if (req.body.verified && !was && getUser(req.params.id)?.role === 'mechanic') notify(Number(req.params.id), { type: 'certified', title: 'You are now a certified mechanic', body: 'An administrator certified your account. You can now accept jobs.', page: '/jobs' });
   res.json({ ok: true });
+});
+// ---- in-app notifications (the bell), preferences, push test
+app.get('/api/notifications', auth(), (req, res) => res.json({
+  items: db.prepare('SELECT id,type,title,body,link,read,created_at FROM notifications WHERE user_id=? ORDER BY id DESC LIMIT 30').all(req.user.id),
+  unread: db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read=0').get(req.user.id).n }));
+app.post('/api/notifications/read', auth(), (req, res) => { // body.ids = some of them, or nothing = all
+  if (Array.isArray(req.body.ids)) req.body.ids.map(Number).filter(Number.isInteger).forEach(id => db.prepare('UPDATE notifications SET read=1 WHERE id=? AND user_id=?').run(id, req.user.id));
+  else db.prepare('UPDATE notifications SET read=1 WHERE user_id=?').run(req.user.id);
+  res.json({ ok: true });
+});
+app.put('/api/profile/notifications', auth(), (req, res) => {
+  db.prepare('UPDATE users SET notify_email=?, notify_push=? WHERE id=?').run(req.body.email === false ? 0 : 1, req.body.push === false ? 0 : 1, req.user.id);
+  res.json({ ok: true });
+});
+app.post('/api/push/test', auth(), (req, res) => {
+  notify(req.user.id, { type: 'test', title: 'Test notification', body: 'If you can see this, notifications are working.', email: false });
+  res.json({ ok: true, push_configured: !!process.env.VAPID_PUBLIC });
 });
 app.patch('/api/me/location', auth(['mechanic']), (req, res) => {
   if (typeof req.body.lat !== 'number' || typeof req.body.lng !== 'number') return res.status(400).json({ error: 'lat and lng required' });
@@ -233,6 +271,8 @@ app.get('/api/reports', auth(['admin']), (_, res) => {
       COALESCE(SUM(CASE WHEN paid=0 AND status='completed' THEN support_fee+main_fee END),0) outstanding FROM requests WHERE ${live}`),
     users: one(`SELECT COALESCE(SUM(role='motorist'),0) motorists, COALESCE(SUM(role='mechanic'),0) mechanics, COALESCE(SUM(role='mechanic' AND verified=1),0) certified FROM users WHERE ${live}`),
     rating: one('SELECT ROUND(AVG(stars),2) avg, COUNT(*) count FROM ratings'),
+    byMethod: all("SELECT method, COUNT(*) count, SUM(amount) amount FROM payments WHERE status='paid' GROUP BY method ORDER BY amount DESC"),
+    paymentStatus: all('SELECT status, COUNT(*) count FROM payments GROUP BY status'),
     bySeverity: all(`SELECT severity, COUNT(*) count, COALESCE(SUM(CASE WHEN paid=1 THEN support_fee+main_fee END),0) revenue FROM requests WHERE ${live} GROUP BY severity`),
     daily: all(`SELECT date(created_at) day, COUNT(*) count FROM requests WHERE ${live} AND created_at >= date('now','-6 days') GROUP BY day ORDER BY day`),
     mechanics: all(`SELECT u.name, COUNT(r.id) jobs, ROUND(AVG(rt.stars),1) rating, COALESCE(SUM(CASE WHEN r.paid=1 THEN r.main_fee END),0) earned
@@ -243,8 +283,8 @@ app.get('/api/reports', auth(['admin']), (_, res) => {
 app.get('/api/reports.csv', auth(['admin']), (_, res) => {
   const rows = db.prepare(`${Q} WHERE r.deleted_at IS NULL ORDER BY r.id`).all();
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = ['id', 'created_at', 'motorist', 'mechanic', 'severity', 'status', 'issue', 'support_fee', 'main_fee', 'total', 'paid'];
-  const csv = [head.join(','), ...rows.map(r => [r.id, r.created_at, r.motorist_name, r.mechanic_name, r.severity, r.status, r.issue, r.support_fee, r.main_fee, r.support_fee + r.main_fee, r.paid ? 'yes' : 'no'].map(esc).join(','))].join('\n');
+  const head = ['id', 'created_at', 'motorist', 'mechanic', 'severity', 'status', 'issue', 'support_fee', 'main_fee', 'total', 'paid', 'payment_status', 'payment_method'];
+  const csv = [head.join(','), ...rows.map(r => [r.id, r.created_at, r.motorist_name, r.mechanic_name, r.severity, r.status, r.issue, r.support_fee, r.main_fee, r.support_fee + r.main_fee, r.paid ? 'yes' : 'no', r.payment_status, r.payment_method].map(esc).join(','))].join('\n');
   res.type('text/csv').set('Content-Disposition', 'attachment; filename=fleetcare-report.csv').send(csv);
 });
 
@@ -260,11 +300,8 @@ app.post('/api/requests', auth(['motorist']), (req, res) => {
   const everyone = db.prepare("SELECT * FROM users WHERE role='mechanic' AND deleted_at IS NULL").all();
   everyone.forEach(m => emit(m.id, { type: 'new_request', request: r }));
   const mechs = everyone.filter(m => m.verified && m.lat != null && km(lat, lng, m.lat, m.lng) <= radius_km);
-  mechs.forEach(m => {
-    notifyPush(m.id, { title: 'Breakdown nearby', body: `${severity} issue within ${radius_km} km` });
-    notifyEmail(m.email, 'New roadside request nearby', `${issue || 'No description'}\nSeverity: ${severity}`);
-  });
-  notifyEmail(getUser(req.user.id).email, 'FleetCare request received', `We alerted ${mechs.length} mechanic(s) within ${radius_km} km, and every mechanic can see your request.`);
+  mechs.forEach(m => notify(m.id, { type: 'new_request', title: 'Breakdown nearby', body: `${severity} issue within ${radius_km} km: ${issue || 'No description'}`, page: '/jobs' }));
+  notify(req.user.id, { type: 'booking', title: `Booking confirmed: request #${id}`, body: `We alerted ${mechs.length} mechanic(s) within ${radius_km} km, and every mechanic can see your request. Estimated total: ${peso(FEES.support + FEES.main[severity])}.`, page: '/track' });
   res.json({ ...r, notified: mechs.length, visible_to: everyone.length });
 });
 app.patch('/api/requests/:id', auth(['motorist']), (req, res) => { // UPDATE: edit a request while it is still pending
@@ -305,9 +342,8 @@ app.patch('/api/requests/:id/status', auth(['mechanic', 'motorist']), (req, res)
   [upd.motorist_id, upd.mechanic_id].filter(Boolean).forEach(id => emit(id, { type: 'request_update', request: upd }));
   if (u.role === 'mechanic') {
     const msg = { accepted: 'A mechanic accepted your request', enroute: 'Your mechanic is on the way', arrived: 'Your mechanic has arrived', completed: 'Service completed. Please settle payment.' }[s];
-    notifyPush(r.motorist_id, { title: 'FleetCare', body: msg });
-    notifyEmail(getUser(r.motorist_id).email, 'FleetCare update', msg);
-  }
+    notify(r.motorist_id, { type: 'status', title: msg, body: `Request #${r.id}: ${msg}.`.replace('..', '.'), page: s === 'completed' ? '/orders' : '/track' });
+  } else if (upd.mechanic_id) notify(upd.mechanic_id, { type: 'cancelled', title: `Request #${r.id} was cancelled`, body: 'The motorist cancelled this request.', page: '/jobs' });
   res.json(upd);
 });
 const setArchived = val => (req, res) => {
@@ -324,33 +360,228 @@ app.post('/api/requests/:id/rate', auth(['motorist']), (req, res) => {
   const r = getReq(req.params.id), stars = Number(req.body.stars);
   if (!r || r.motorist_id !== req.user.id || r.status !== 'completed' || !r.mechanic_id) return res.status(400).json({ error: 'You can only rate a completed job' });
   if (!Number.isInteger(stars) || stars < 1 || stars > 5) return res.status(400).json({ error: 'Pick 1 to 5 stars' });
-  try { db.prepare('INSERT INTO ratings(request_id,motorist_id,mechanic_id,stars,comment) VALUES(?,?,?,?,?)').run(r.id, req.user.id, r.mechanic_id, stars, String(req.body.comment || '').slice(0, 300)); }
+  try { db.prepare('INSERT INTO ratings(request_id,motorist_id,mechanic_id,stars,comment) VALUES(?,?,?,?,?)').run(r.id, req.user.id, r.mechanic_id, stars, String(req.body.comment || '').trim().slice(0, 500)); }
   catch { return res.status(409).json({ error: 'You already rated this job' }); }
-  notifyPush(r.mechanic_id, { title: 'New rating', body: `${stars} star${stars > 1 ? 's' : ''} from a motorist` });
+  const cm = String(req.body.comment || '').trim();
+  notify(r.mechanic_id, { type: 'review', title: `New ${stars}-star review`, body: cm ? `“${cm.slice(0, 140)}”` : `A motorist rated you ${stars} star${stars > 1 ? 's' : ''} for request #${r.id}.`, page: '/jobs' });
   res.json({ ok: true });
 });
 
-// ---- payments (Stripe Checkout, sandbox keys)
-app.post('/api/requests/:id/checkout', auth(['motorist']), async (req, res) => {
+// UC-05 (extended): photos of the finished work, attached to the motorist's own review (max 4)
+const IMG_RE = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/;
+const readImage = (dataUrl, maxKb = 400) => {
+  const m = IMG_RE.exec(dataUrl || '');
+  if (!m) return { error: 'Upload a JPG, PNG or WebP image' };
+  const buf = Buffer.from(m[2], 'base64');
+  return buf.length > maxKb * 1024 ? { error: `Image is too large (max ${maxKb} KB)` } : { mime: m[1], buf };
+};
+app.post('/api/requests/:id/review-photos', auth(['motorist']), (req, res) => {
   const r = getReq(req.params.id);
-  if (!r || r.motorist_id !== req.user.id || r.paid) return res.status(400).json({ error: 'Nothing to pay' });
-  if (!stripe) { db.prepare('UPDATE requests SET paid=1 WHERE id=?').run(r.id); return res.json({ mock: true }); }
-  const item = (name, amt) => ({ quantity: 1, price_data: { currency: 'php', unit_amount: amt * 100, product_data: { name } } });
-  const s = await stripe.checkout.sessions.create({
-    mode: 'payment', payment_method_types: ['card'],
-    line_items: [item('Roadside dispatch support fee', r.support_fee), item(`Repair service (${r.severity})`, r.main_fee)],
-    success_url: `${CLIENT}/?paid=${r.id}&session_id={CHECKOUT_SESSION_ID}`, cancel_url: CLIENT
-  });
-  db.prepare('UPDATE requests SET stripe_session=? WHERE id=?').run(s.id, r.id);
-  res.json({ url: s.url });
+  if (!r || r.motorist_id !== req.user.id || r.status !== 'completed' || !r.mechanic_id) return res.status(400).json({ error: 'You can only add photos to a completed job' });
+  if (!db.prepare('SELECT 1 FROM ratings WHERE request_id=?').get(r.id)) return res.status(400).json({ error: 'Rate the job first, then add photos' });
+  if (db.prepare("SELECT COUNT(*) n FROM photos WHERE request_id=? AND source='review'").get(r.id).n >= 4) return res.status(400).json({ error: 'You can add up to 4 photos per review' });
+  const img = readImage(req.body.image);
+  if (img.error) return res.status(400).json({ error: img.error });
+  const id = db.prepare("INSERT INTO photos(mechanic_id,request_id,source,caption,mime,data) VALUES(?,?,'review',?,?,?)").run(r.mechanic_id, r.id, String(req.body.caption || '').trim().slice(0, 120) || null, img.mime, img.buf).lastInsertRowid;
+  res.json({ id: Number(id) });
 });
-app.post('/api/requests/:id/confirm', auth(['motorist']), async (req, res) => {
-  const r = getReq(req.params.id);
-  if (!r || r.motorist_id !== req.user.id || !stripe || r.stripe_session !== req.body.session_id) return res.status(400).json({ error: 'Invalid payment session' });
-  const paid = (await stripe.checkout.sessions.retrieve(r.stripe_session)).payment_status === 'paid';
-  if (paid) { db.prepare('UPDATE requests SET paid=1 WHERE id=?').run(r.id); notifyEmail(getUser(r.motorist_id).email, 'FleetCare receipt', `Payment received for request #${r.id}.`); }
-  res.json({ paid });
+app.get('/api/photos/:id', (req, res) => { // public: <img> tags cannot send auth headers
+  const p = db.prepare('SELECT mime,data FROM photos WHERE id=?').get(req.params.id);
+  if (!p) return res.status(404).end();
+  res.type(p.mime).set('Cache-Control', 'public, max-age=31536000, immutable').send(Buffer.from(p.data));
 });
+app.delete('/api/photos/:id', auth(), (req, res) => { // the motorist who posted it, the mechanic who owns a portfolio photo, or an admin
+  const p = db.prepare('SELECT id,mechanic_id,request_id,source FROM photos WHERE id=?').get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'Photo not found' });
+  const owner = p.source === 'review' ? getReq(p.request_id)?.motorist_id : p.mechanic_id;
+  if (req.user.role !== 'admin' && owner !== req.user.id) return res.status(403).json({ error: 'You can only delete your own photos' });
+  db.prepare('DELETE FROM photos WHERE id=?').run(p.id);
+  res.json({ ok: true });
+});
+
+// ---- public "Browse mechanics": only certified, active mechanics; never exposes email or phone
+const MECH_SQL = `SELECT u.id,u.name,u.avatar_at,u.bio,u.created_at,
+  (SELECT ROUND(AVG(stars),1) FROM ratings WHERE mechanic_id=u.id) rating,
+  (SELECT COUNT(*) FROM ratings WHERE mechanic_id=u.id) reviews,
+  (SELECT COUNT(*) FROM requests WHERE mechanic_id=u.id AND status='completed') jobs,
+  (SELECT COUNT(*) FROM photos WHERE mechanic_id=u.id) photo_count
+  FROM users u WHERE u.role='mechanic' AND u.verified=1 AND u.deleted_at IS NULL`;
+const shortName = n => { const [a, ...b] = String(n).trim().split(/\s+/); return b.length ? `${a} ${b[b.length - 1][0].toUpperCase()}.` : a; };
+app.get('/api/mechanics', (req, res) => {
+  const q = String(req.query.q || '').trim().toLowerCase(), limit = Math.min(Number(req.query.limit) || 24, 60);
+  const order = { rating: 'rating DESC, reviews DESC, jobs DESC', jobs: 'jobs DESC, rating DESC', new: 'u.id DESC' }[req.query.sort] || 'rating DESC, reviews DESC, jobs DESC';
+  const pics = db.prepare('SELECT id,source,caption FROM photos WHERE mechanic_id=? ORDER BY id DESC LIMIT 6');
+  res.json(db.prepare(`${MECH_SQL} ORDER BY ${order}`).all()
+    .filter(m => !q || `${m.name} ${m.bio || ''}`.toLowerCase().includes(q)).slice(0, limit)
+    .map(m => ({ ...m, photos: pics.all(m.id) })));
+});
+// Home-page feed: latest motorist reviews (stars, comment, photos) with the mechanic's completed-job count. Public.
+app.get('/api/reviews/recent', (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 6, 24);
+  const ph = db.prepare("SELECT id FROM photos WHERE request_id=? AND source='review' ORDER BY id");
+  res.json(db.prepare(`SELECT r.request_id id, r.stars, r.comment, r.created_at, mo.name motorist_name, mo.id motorist_id, mo.avatar_at motorist_avatar,
+      m.id mechanic_id, m.name mechanic_name, m.avatar_at mechanic_avatar,
+      (SELECT ROUND(AVG(stars),1) FROM ratings WHERE mechanic_id=m.id) mechanic_rating,
+      (SELECT COUNT(*) FROM requests WHERE mechanic_id=m.id AND status='completed') mechanic_jobs
+    FROM ratings r JOIN users mo ON mo.id=r.motorist_id JOIN users m ON m.id=r.mechanic_id
+    WHERE m.role='mechanic' AND m.verified=1 AND m.deleted_at IS NULL ORDER BY r.rowid DESC LIMIT ?`).all(limit)
+    .map(({ motorist_name, ...r }) => ({ ...r, motorist: shortName(motorist_name), photos: ph.all(r.id).map(p => p.id) })));
+});
+app.get('/api/mechanics/:id', (req, res) => {
+  const m = db.prepare(`${MECH_SQL} AND u.id=?`).get(req.params.id);
+  if (!m) return res.status(404).json({ error: 'Mechanic not found' });
+  res.json({ ...m, photos: db.prepare('SELECT id,source,caption,created_at FROM photos WHERE mechanic_id=? ORDER BY id DESC LIMIT 60').all(m.id) });
+});
+app.get('/api/mechanics/:id/reviews', (req, res) => {
+  if (!db.prepare(`${MECH_SQL} AND u.id=?`).get(req.params.id)) return res.status(404).json({ error: 'Mechanic not found' });
+  const ph = db.prepare("SELECT id FROM photos WHERE request_id=? AND source='review' ORDER BY id");
+  res.json(db.prepare(`SELECT r.request_id id, r.stars, r.comment, r.created_at, u.name, u.id reviewer_id, u.avatar_at reviewer_avatar
+    FROM ratings r JOIN users u ON u.id=r.motorist_id WHERE r.mechanic_id=? ORDER BY r.rowid DESC LIMIT 50`).all(req.params.id)
+    .map(({ name, ...r }) => ({ ...r, reviewer: shortName(name), photos: ph.all(r.id).map(p => p.id) })));
+});
+// the mechanic's own portfolio (photos of previous work), max 24
+app.get('/api/portfolio', auth(['mechanic']), (req, res) => res.json(db.prepare("SELECT id,caption,created_at FROM photos WHERE mechanic_id=? AND source='portfolio' ORDER BY id DESC").all(req.user.id)));
+app.post('/api/portfolio', auth(['mechanic']), (req, res) => {
+  if (db.prepare("SELECT COUNT(*) n FROM photos WHERE mechanic_id=? AND source='portfolio'").get(req.user.id).n >= 24) return res.status(400).json({ error: 'Your portfolio is full (24 photos). Delete one to add another.' });
+  const img = readImage(req.body.image);
+  if (img.error) return res.status(400).json({ error: img.error });
+  const id = db.prepare("INSERT INTO photos(mechanic_id,source,caption,mime,data) VALUES(?,'portfolio',?,?,?)").run(req.user.id, String(req.body.caption || '').trim().slice(0, 120) || null, img.mime, img.buf).lastInsertRowid;
+  res.json({ id: Number(id) });
+});
+
+// ---- payments: cash, GCash, Maya, card (Stripe) and bank transfer. Status: pending | paid | failed
+const PAY = {
+  cash: ['Cash on Service', 'Pay your mechanic in cash when the job is done. They confirm they received it.'],
+  gcash: ['GCash', 'Send the total to the GCash account below, then enter the reference number from your receipt.'],
+  maya: ['Maya', 'Send the total to the Maya account below, then enter the reference number from your receipt.'],
+  card: ['Credit / Debit Card', 'Pay securely by card.'],
+  bank: ['Bank Transfer', 'Transfer the total to the bank account below, then enter the transaction reference number.'],
+};
+const REF_METHODS = ['gcash', 'maya', 'bank'];
+// Real online payments. PayMongo (Philippines) handles GCash, Maya and cards: the motorist is sent to the provider
+// (the GCash / Maya app on a phone), pays there, and FleetCare marks it paid itself. No mechanic confirmation needed.
+// Without a gateway key: card is not offered (no fake payments) and GCash / Maya fall back to manual transfer + reference.
+const PM_KEY = process.env.PAYMONGO_SECRET_KEY || '';
+const PM_TYPE = { gcash: 'gcash', maya: 'paymaya', card: 'card' };
+const pm = async (method, path, body) => {
+  const r = await fetch('https://api.paymongo.com/v1' + path, { method, headers: { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from(PM_KEY + ':').toString('base64') }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.errors?.[0]?.detail || `Payment provider error (${r.status})`);
+  return j.data;
+};
+const onlineVia = m => (m === 'card' ? (PM_KEY ? 'paymongo' : stripe ? 'stripe' : null) : PM_TYPE[m] && PM_KEY ? 'paymongo' : null);
+const payMethods = () => (process.env.PAY_METHODS || 'cash,gcash,maya,card,bank').split(',').map(s => s.trim()).filter(m => PAY[m] && (m !== 'card' || onlineVia('card')));
+const peso = n => '₱' + Number(n).toLocaleString();
+app.get('/api/payment-options', (_, res) => {
+  const e = process.env;
+  const details = { gcash: { name: e.GCASH_NAME || 'FleetCare', number: e.GCASH_NUMBER || '0917 000 0000' }, maya: { name: e.MAYA_NAME || 'FleetCare', number: e.MAYA_NUMBER || '0918 000 0000' },
+    bank: { bank: e.BANK_NAME || 'BDO', name: e.BANK_ACCOUNT_NAME || 'FleetCare Inc.', number: e.BANK_ACCOUNT_NUMBER || '0000 0000 0000' } };
+  res.json({ card_mode: onlineVia('card'), methods: payMethods().map(id => { const online = !!onlineVia(id) && id !== 'cash';
+    return { id, label: PAY[id][0], online, needs_reference: REF_METHODS.includes(id) && !online, details: online ? null : details[id] || null,
+      hint: online ? (id === 'card' ? 'Pay securely by card on the next page.' : `You will be taken to ${PAY[id][0]} to approve the payment. It is confirmed automatically.`) : PAY[id][1] }; }) });
+});
+// The booking always shows the paid flag + the latest payment status/method; both people get a live refresh.
+function syncPayment(requestId) {
+  const rows = db.prepare('SELECT status,method FROM payments WHERE request_id=? ORDER BY id DESC').all(requestId);
+  const paid = rows.find(p => p.status === 'paid'), last = paid || rows[0];
+  db.prepare('UPDATE requests SET paid=?, payment_status=?, payment_method=? WHERE id=?').run(paid ? 1 : 0, last ? last.status : 'pending', last ? last.method : null, requestId);
+  const upd = getReq(requestId);
+  [upd.motorist_id, upd.mechanic_id].filter(Boolean).forEach(id => emit(id, { type: 'request_update', request: upd }));
+  return upd;
+}
+function settle(p, status, by, note, silent) { // pending -> paid | failed
+  db.prepare("UPDATE payments SET status=?, confirmed_by=?, note=COALESCE(?,note), updated_at=datetime('now') WHERE id=?").run(status, by ?? null, note ?? null, p.id);
+  const r = syncPayment(p.request_id), mot = getUser(r.motorist_id);
+  if (silent) return r;
+  if (status === 'paid') notify(mot.id, { type: 'payment', title: `Payment received: request #${r.id}`, page: '/orders',
+    body: `Thank you! Request #${r.id} (${r.severity})\nDispatch support fee: ${peso(r.support_fee)}\nService fee: ${peso(r.main_fee)}\nTotal paid: ${peso(p.amount)}\nMethod: ${PAY[p.method][0]}${p.reference ? `\nReference: ${p.reference}` : ''}` });
+  if (status === 'paid' && p.provider_session && r.mechanic_id) notify(r.mechanic_id, { type: 'payment', title: `Paid online: request #${r.id}`, page: '/jobs', push: true, email: false, body: `${mot.name} paid ${peso(p.amount)} by ${PAY[p.method][0]}. Nothing to confirm.` });
+  if (status !== 'paid') notify(mot.id, { type: 'payment', title: `Payment not confirmed: request #${r.id}`, page: '/orders', body: `We could not confirm your ${PAY[p.method][0]} payment${note ? ` (${note})` : ''}. Please choose a payment method again.` });
+  return r;
+}
+app.post('/api/requests/:id/pay', auth(['motorist']), async (req, res) => {
+  const r = getReq(req.params.id), method = String(req.body.method || '');
+  if (!r || r.motorist_id !== req.user.id || r.deleted_at) return res.status(404).json({ error: 'Request not found' });
+  if (r.status !== 'completed') return res.status(400).json({ error: 'You can pay once the mechanic marks the job complete' });
+  if (r.paid) return res.status(409).json({ error: 'This request is already paid' });
+  if (!payMethods().includes(method)) return res.status(400).json({ error: 'Choose a payment method' });
+  if (db.prepare("SELECT 1 FROM payments WHERE request_id=? AND status='pending'").get(r.id)) return res.status(409).json({ error: 'A payment is already waiting for confirmation. Cancel it first to choose another method.' });
+  const reference = String(req.body.reference || '').trim().slice(0, 40), amount = r.support_fee + r.main_fee;
+  if (REF_METHODS.includes(method) && !onlineVia(method) && reference.length < 6) return res.status(400).json({ error: 'Enter the transaction reference number (at least 6 characters)' });
+  const add = (session, note) => Number(db.prepare('INSERT INTO payments(request_id,method,amount,reference,provider_session,note) VALUES(?,?,?,?,?,?)').run(r.id, method, amount, reference || null, session ?? null, note ?? null).lastInsertRowid);
+  const via = method === 'cash' ? null : onlineVia(method);
+  if (via) { // real online payment: send the motorist to the provider and wait for it to confirm
+    const items = [['Roadside dispatch support fee', r.support_fee], [`Repair service (${r.severity})`, r.main_fee]].filter(x => x[1] > 0);
+    const id = add(null);
+    try {
+      let sid, url;
+      if (via === 'paymongo') {
+        const s = await pm('POST', '/checkout_sessions', { data: { attributes: { send_email_receipt: false, show_description: true, show_line_items: true,
+          description: `FleetCare request #${r.id}`, payment_method_types: [PM_TYPE[method]], reference_number: `FC-${r.id}-${id}`,
+          line_items: items.map(([name, amt]) => ({ name, amount: amt * 100, currency: 'PHP', quantity: 1 })),
+          success_url: `${CLIENT}/?paid=${r.id}&pid=${id}`, cancel_url: `${CLIENT}/?paid=${r.id}&pid=${id}` } } });
+        sid = s.id; url = s.attributes.checkout_url;
+      } else {
+        const item = (name, amt) => ({ quantity: 1, price_data: { currency: 'php', unit_amount: amt * 100, product_data: { name } } });
+        const s = await stripe.checkout.sessions.create({ mode: 'payment', payment_method_types: ['card'], line_items: items.map(([n, a]) => item(n, a)),
+          success_url: `${CLIENT}/?paid=${r.id}&pid=${id}`, cancel_url: `${CLIENT}/?paid=${r.id}&pid=${id}` });
+        sid = s.id; url = s.url;
+      }
+      db.prepare('UPDATE payments SET provider_session=?, provider_url=? WHERE id=?').run(sid, url, id);
+      syncPayment(r.id);
+      return res.json({ url, payment_id: id, status: 'pending' });
+    } catch (e) { db.prepare("UPDATE payments SET status='failed', note=? WHERE id=?").run(String(e.message).slice(0, 200), id); syncPayment(r.id); return res.status(502).json({ error: e.message }); }
+  }
+  const id = add(null);
+  syncPayment(r.id); // cash / e-wallet / bank: stays pending until the mechanic confirms they received the money
+  if (r.mechanic_id) {
+    notify(r.mechanic_id, { type: 'payment_due', title: `Confirm payment: request #${r.id}`, page: '/jobs', body: `${getUser(r.motorist_id).name} chose ${PAY[method][0]} for ${peso(amount)}${reference ? ` (reference ${reference})` : ''}. Confirm once you have received it.` });
+    notify(r.motorist_id, { type: 'payment', title: `Payment submitted: request #${r.id}`, page: '/orders', email: false, push: false, body: `Waiting for ${getUser(r.mechanic_id).name} to confirm your ${PAY[method][0]} payment.` });
+  }
+  res.json({ payment_id: id, status: 'pending' });
+});
+// Ask the provider whether an online payment went through, and settle it. Used on return, by the button, and by the background check.
+async function checkOnline(p) {
+  if (p.status !== 'pending' || !p.provider_session) return p.status;
+  try {
+    if (stripe && /^cs_(test|live)_/.test(p.provider_session)) { // Stripe ids look like cs_test_…; PayMongo ids are plain cs_…
+      const s = await stripe.checkout.sessions.retrieve(p.provider_session);
+      if (s.payment_status === 'paid') settle(p, 'paid', null); else if (s.status === 'expired') settle(p, 'failed', null, 'Checkout expired');
+    } else if (PM_KEY) {
+      const s = await pm('GET', '/checkout_sessions/' + p.provider_session), at = s.attributes;
+      if ((at.payments || []).some(x => x.attributes?.status === 'paid') || at.payment_intent?.attributes?.status === 'succeeded') settle(p, 'paid', null);
+      else if (at.status === 'expired') settle(p, 'failed', null, 'Checkout expired');
+    }
+  } catch (e) { console.error('[payment check]', e.message); }
+  return db.prepare('SELECT status FROM payments WHERE id=?').get(p.id).status;
+}
+app.post('/api/requests/:id/confirm', auth(['motorist']), async (req, res) => { // motorist came back from the provider (or pressed "Check payment")
+  const r = getReq(req.params.id), pid = Number(req.body.pid) || null, sid = String(req.body.session_id || '');
+  const p = r && (pid ? db.prepare('SELECT * FROM payments WHERE id=? AND request_id=?').get(pid, r.id) : db.prepare('SELECT * FROM payments WHERE request_id=? AND provider_session=?').get(r.id, sid));
+  if (!p || r.motorist_id !== req.user.id || !p.provider_session) return res.status(400).json({ error: 'Invalid payment session' });
+  const status = await checkOnline(p);
+  res.json({ paid: status === 'paid', status });
+});
+// Safety net: if the motorist pays in the GCash / Maya app and never returns to FleetCare, we still find out.
+setInterval(async () => {
+  for (const p of db.prepare("SELECT * FROM payments WHERE status='pending' AND provider_session IS NOT NULL AND created_at > datetime('now','-3 hours')").all()) await checkOnline(p);
+}, 15_000).unref();
+app.post('/api/payments/:id/cancel', auth(['motorist']), (req, res) => { // the motorist changes their mind while a payment is pending
+  const p = db.prepare('SELECT * FROM payments WHERE id=?').get(req.params.id), r = p && getReq(p.request_id);
+  if (!p || r.motorist_id !== req.user.id) return res.status(404).json({ error: 'Payment not found' });
+  if (p.status !== 'pending') return res.status(409).json({ error: 'This payment is already settled' });
+  res.json(settle(p, 'failed', req.user.id, 'Cancelled by the motorist', true));
+});
+app.post('/api/payments/:id/confirm', auth(['mechanic', 'admin']), (req, res) => { // mechanic (or admin) confirms they received the money, or marks it failed
+  const p = db.prepare('SELECT * FROM payments WHERE id=?').get(req.params.id), r = p && getReq(p.request_id);
+  if (!p) return res.status(404).json({ error: 'Payment not found' });
+  if (req.user.role === 'mechanic' && r.mechanic_id !== req.user.id) return res.status(403).json({ error: 'Only the mechanic on this job can confirm payment' });
+  if (p.status !== 'pending') return res.status(409).json({ error: 'This payment is already settled' });
+  if (p.provider_session) return res.status(400).json({ error: 'Card payments are confirmed automatically by the card processor' });
+  res.json(settle(p, req.body.paid ? 'paid' : 'failed', req.user.id, String(req.body.note || '').trim().slice(0, 200) || null));
+});
+app.get('/api/payments', auth(['admin']), (_, res) => res.json(db.prepare(`SELECT p.*, r.severity, mo.name motorist_name, me.name mechanic_name FROM payments p
+  JOIN requests r ON r.id=p.request_id LEFT JOIN users mo ON mo.id=r.motorist_id LEFT JOIN users me ON me.id=r.mechanic_id ORDER BY p.id DESC LIMIT 200`).all()));
 
 // ---- chat history + push
 app.get('/api/requests/:id/messages', auth(), (req, res) => {
@@ -380,7 +611,7 @@ wss.on('connection', (ws, req) => {
       const id = db.prepare('INSERT INTO messages(request_id,sender_id,body) VALUES(?,?,?)').run(r.id, u.id, m.body.trim().slice(0, 1000)).lastInsertRowid;
       const msg = { type: 'chat', ...db.prepare('SELECT * FROM messages WHERE id=?').get(id), sender_name: u.name };
       emit(u.id, msg); emit(other, msg);
-      if (!socks.get(other)?.size) notifyPush(other, { title: `Message from ${u.name}`, body: m.body.slice(0, 80) });
+      if (!socks.get(other)?.size) notifyPush(other, { title: `Message from ${u.name}`, body: m.body.slice(0, 80), url: `${CLIENT}/#/${getUser(other).role}/track` });
     }
     if (m.type === 'location' && u.role === 'mechanic' && r.mechanic_id === u.id && typeof m.lat === 'number' && typeof m.lng === 'number') {
       db.prepare('UPDATE users SET lat=?,lng=? WHERE id=?').run(m.lat, m.lng, u.id);

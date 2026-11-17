@@ -26,5 +26,9 @@ self.addEventListener('message', e => {
   if (e.data?.type === 'queue') e.waitUntil(tx('readwrite', s => s.add({ token: e.data.token, body: e.data.body })));
   if (e.data?.type === 'flush') e.waitUntil(flush().catch(() => {}));
 });
-self.addEventListener('push', e => { const d = e.data ? e.data.json() : {}; e.waitUntil(self.registration.showNotification(d.title || 'FleetCare', { body: d.body, icon: '/icon.svg' })); });
-self.addEventListener('notificationclick', e => { e.notification.close(); e.waitUntil(clients.openWindow('/')); });
+self.addEventListener('push', e => { const d = e.data ? e.data.json() : {}; e.waitUntil(self.registration.showNotification(d.title || 'FleetCare', { body: d.body, icon: '/icon-192.png', badge: '/icon-192.png', data: { url: d.url || '/' } })); });
+// clicking a notification focuses FleetCare and opens the page it is about
+self.addEventListener('notificationclick', e => {
+  e.notification.close(); const url = e.notification.data?.url || '/';
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => { const c = cs.find(x => x.url.startsWith(self.location.origin)); return c ? c.navigate(url).then(() => c.focus()).catch(() => clients.openWindow(url)) : clients.openWindow(url); }));
+});

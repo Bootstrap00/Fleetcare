@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
 import { useStore } from './store';
-import { Avatar, Badge, PageHead, Stars } from './ui';
+import { Avatar, Badge, PageHead, PasswordInput, Stars } from './ui';
+import Portfolio from './Portfolio';
 
 // Crop to a centered square and shrink to 256px so uploads stay small (about 20 KB).
 async function toAvatar(file) {
@@ -17,10 +18,10 @@ async function toAvatar(file) {
 
 export default function Profile() {
   const { user, updateUser, setMsg } = useStore();
-  const [me, setMe] = useState(null), [f, setF] = useState({ name: user.name, phone: '', email: '' });
-  const [pw, setPw] = useState({ current: '', password: '', confirm: '' }), [busy, setBusy] = useState('');
+  const [me, setMe] = useState(null), [f, setF] = useState({ name: user.name, phone: '', email: '', bio: '' });
+  const [pw, setPw] = useState({ current: '', password: '', confirm: '' }), [busy, setBusy] = useState(''), [prefs, setPrefs] = useState({ email: true, push: true });
   const pick = useRef();
-  useEffect(() => { api('/me').then(m => { setMe(m); setF({ name: m.name, phone: m.phone || '', email: m.email }); }).catch(e => setMsg(e.message)); }, []);
+  useEffect(() => { api('/me').then(m => { setMe(m); setF({ name: m.name, phone: m.phone || '', email: m.email, bio: m.bio || '' }); setPrefs({ email: m.notify_email, push: m.notify_push }); }).catch(e => setMsg(e.message)); }, []);
   const run = (key, fn) => async () => { setBusy(key); try { await fn(); } catch (e) { setMsg(e.message); } finally { setBusy(''); } };
 
   const onFile = e => { const file = e.target.files[0]; e.target.value = ''; if (file) run('photo', async () => {
@@ -34,6 +35,7 @@ export default function Profile() {
     await api('/profile/password', { method: 'PUT', body: { current: pw.current, password: pw.password } });
     setPw({ current: '', password: '', confirm: '' }); setMsg('Password changed.');
   });
+  const savePrefs = run('prefs', async () => { await api('/profile/notifications', { method: 'PUT', body: prefs }); setMsg('Notification preferences saved.'); });
   const set = k => e => setF({ ...f, [k]: e.target.value }), setP = k => e => setPw({ ...pw, [k]: e.target.value });
 
   return (
@@ -61,13 +63,22 @@ export default function Profile() {
         <label>Full name<input autoComplete="name" value={f.name} onChange={set('name')} /></label>
         <div className="two"><label>Phone<input type="tel" autoComplete="tel" value={f.phone} onChange={set('phone')} /></label>
           <label>Email (used to log in)<input type="email" autoComplete="email" value={f.email} onChange={set('email')} /></label></div>
+        {user.role === 'mechanic' && <label>About you (shown on your public profile)<textarea maxLength={300} value={f.bio} onChange={set('bio')} placeholder="Years of experience, what you specialise in, areas you cover…" /></label>}
         <div className="actions"><button className="btn" disabled={busy === 'info'} onClick={saveInfo}>Save changes</button></div>
       </div>
       <div className="card stack">
+        <h3>Notifications</h3>
+        <label className="check"><input type="checkbox" checked={prefs.email} onChange={e => setPrefs({ ...prefs, email: e.target.checked })} />Email me about bookings, status updates, payments and reviews</label>
+        <label className="check"><input type="checkbox" checked={prefs.push} onChange={e => setPrefs({ ...prefs, push: e.target.checked })} />Send browser push notifications</label>
+        <span className="hint">The bell inside FleetCare is always on, and password emails are always sent.</span>
+        <div className="actions"><button className="btn" disabled={busy === 'prefs'} onClick={savePrefs}>Save preferences</button></div>
+      </div>
+      {user.role === 'mechanic' && <Portfolio me={me} />}
+      <div className="card stack">
         <h3>Change password</h3>
-        <label>Current password<input type="password" autoComplete="current-password" value={pw.current} onChange={setP('current')} /></label>
-        <div className="two"><label>New password<input type="password" autoComplete="new-password" value={pw.password} onChange={setP('password')} /></label>
-          <label>Confirm new password<input type="password" autoComplete="new-password" value={pw.confirm} onChange={setP('confirm')} /></label></div>
+        <label>Current password<PasswordInput autoComplete="current-password" value={pw.current} onChange={setP('current')} /></label>
+        <div className="two"><label>New password<PasswordInput autoComplete="new-password" value={pw.password} onChange={setP('password')} /></label>
+          <label>Confirm new password<PasswordInput autoComplete="new-password" value={pw.confirm} onChange={setP('confirm')} /></label></div>
         <div className="actions"><button className="btn" disabled={busy === 'pw' || !pw.current || !pw.password} onClick={savePw}>Update password</button></div>
       </div>
     </div>);

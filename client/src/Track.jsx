@@ -3,6 +3,7 @@ import { subscribe, send } from './socket';
 import { useStore } from './store';
 import MapView from './MapView';
 import Chat from './Chat';
+import { PayStatus, PaymentActions } from './Payments';
 import { RateBox } from './Orders';
 import { NEXT } from './Jobs';
 import { Badge, Countdown, Empty, PageHead, Who, go, href, km, peso } from './ui';
@@ -39,11 +40,11 @@ export default function Track() {
       <div className="split">
         <div className="card">
           <MapView pin={{ lat: cur.lat, lng: cur.lng }} mechanic={pos} />
-          <div className="row-top"><Badge s={cur.status} />{user.role === 'motorist' ? <Who id={cur.mechanic_id} name={cur.mechanic_name} at={cur.mechanic_avatar} rating={cur.mechanic_rating} /> : <Who id={cur.motorist_id} name={cur.motorist_name} at={cur.motorist_avatar} />}{d != null && cur.status !== 'completed' && <b className="eta">~{d.toFixed(1)} km away</b>}</div>
+          <div className="row-top"><Badge s={cur.status} /><PayStatus r={cur} />{user.role === 'motorist' ? <Who id={cur.mechanic_id} name={cur.mechanic_name} at={cur.mechanic_avatar} rating={cur.mechanic_rating} /> : <Who id={cur.motorist_id} name={cur.motorist_name} at={cur.motorist_avatar} />}{d != null && cur.status !== 'completed' && <b className="eta">~{d.toFixed(1)} km away</b>}</div>
           <p>{cur.issue || 'No description'}</p>
           <div className="actions">
             {user.role === 'mechanic' && NEXT[cur.status] && <button className="btn" onClick={() => act.status(cur.id, NEXT[cur.status][0])}>{NEXT[cur.status][1]}</button>}
-            {user.role === 'motorist' && cur.status === 'completed' && !cur.paid && <button className="btn" onClick={() => act.pay(cur.id)}>Pay {peso(cur.support_fee + cur.main_fee)}</button>}
+            <PaymentActions r={cur} user={user} />
           </div>
           {user.role === 'motorist' && cur.status === 'completed' && <RateBox r={cur} />}
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { useStore } from './store';
+import ReviewFeed from './Reviews';
 import { Badge, PageHead, Reveal, href, peso } from './ui';
 
 const ACTIVE = ['pending', 'accepted', 'enroute', 'arrived'];
@@ -20,6 +21,7 @@ export function MotoristHome() {
       {cur && <Reveal className="card req"><div className="req-main"><span className="eyebrow">Current request</span><div className="row-top"><b>#{cur.id}</b><Badge s={cur.status} /></div><p>{cur.issue || 'No description'}</p></div>
         <div className="actions"><a className="btn" href={href('/track')}>{cur.mechanic_id ? 'Open live tracking' : 'See status'}</a></div></Reveal>}
       <div className="grid g3"><Tile to="/request" title="Request help" desc="Pin your breakdown and broadcast a distress radius." /><Tile to="/track" title="Live tracking" desc="Follow your mechanic and chat in real time." /><Tile to="/orders" title="My requests" desc="Edit, pay and rate your mechanic." /></div>
+      <ReviewFeed />
     </div>);
 }
 
@@ -33,7 +35,7 @@ export function MechanicHome() {
       <PageHead eyebrow="Mechanic portal" title={`Hi, ${first(user)}`} sub="Every open request is listed in Jobs, nearest first. Share your location to see distances and get alerts for nearby ones."><a className="btn" href={href('/jobs')}>View jobs</a></PageHead>
       {me && !me.verified && <div className="banner"><b>Awaiting certification.</b> An administrator must certify your account before you can accept jobs.</div>}
       <Stats items={[[open.length, 'Open requests'], [active.length, 'Active jobs'], [me ? peso(me.earned) : '—', 'Earned (paid jobs)'], [me?.rating ? `${me.rating} / 5` : '—', 'Your rating']]} />
-      <div className="grid g3"><Tile to="/jobs" title="Jobs" desc="Accept requests, update status and complete jobs." /><Tile to="/track" title="Live job" desc="Map, chat and live location for your current job." /></div>
+      <div className="grid g3"><Tile to="/jobs" title="Jobs" desc="Accept requests, update status and complete jobs." /><Tile to="/profile" title="Public profile" desc="Add your bio and portfolio photos so motorists can find you." /><Tile to="/track" title="Live job" desc="Map, chat and live location for your current job." /></div>
     </div>);
 }
 

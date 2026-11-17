@@ -8,7 +8,7 @@ export default function Chat({ requestId, me }) {
     api(`/requests/${requestId}/messages`).then(setMsgs).catch(() => {});
     return subscribe(m => { if (m.type === 'chat' && m.request_id === requestId) setMsgs(x => [...x, m]); });
   }, [requestId]);
-  useEffect(() => end.current?.scrollIntoView(), [msgs]);
+  useEffect(() => { end.current?.scrollIntoView(); }, [msgs]); // braces: an effect must not return a value (newer Chrome returns a Promise here)
   const go = () => { if (text.trim()) { send({ type: 'chat', requestId, body: text }); setText(''); } };
   return (
     <div className="chat">

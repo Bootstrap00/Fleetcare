@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { useStore } from './store';
+import { ReviewView } from './Photos';
+import { PayStatus, PaymentActions } from './Payments';
 import { Badge, Empty, PageHead, Reveal, Stars, Who, go, km, peso } from './ui';
 
 export const NEXT = { accepted: ['enroute', 'Start driving'], enroute: ['arrived', "I've arrived"], arrived: ['completed', 'Complete job'] };
 
 export default function Jobs() {
-  const { rows, act, setSel, setMsg, load } = useStore();
+  const { user, rows, act, setSel, setMsg, load } = useStore();
   const [loc, setLoc] = useState(null);
   const share = () => navigator.geolocation?.getCurrentPosition(async p => {
     const c = { lat: p.coords.latitude, lng: p.coords.longitude };
@@ -35,14 +37,15 @@ export default function Jobs() {
       {mine.length === 0 && <Empty title="No jobs yet">Accepted jobs and their history will show here.</Empty>}
       <div className="stack">{mine.map(r => (
         <Reveal key={r.id} className="card req">
-          <div className="req-main"><div className="row-top"><b>#{r.id}</b><span className="sev-tag">{r.severity}</span><Badge s={r.status} />{r.paid ? <Badge s="paid" /> : null}</div>
+          <div className="req-main"><div className="row-top"><b>#{r.id}</b><span className="sev-tag">{r.severity}</span><Badge s={r.status} /><PayStatus r={r} /></div>
             <Who id={r.motorist_id} name={r.motorist_name} at={r.motorist_avatar} />
             <p>{r.issue || 'No description'}</p>
             <small className="muted">You earn {peso(r.main_fee)}</small>
-            {r.my_rating ? <div className="rate">Rated <Stars value={r.my_rating} /></div> : null}</div>
+            <ReviewView r={r} /></div>
           <div className="actions">
             {NEXT[r.status] && <button className="btn" onClick={() => act.status(r.id, NEXT[r.status][0])}>{NEXT[r.status][1]}</button>}
             <button className="btn ghost sm" onClick={() => { setSel(r.id); go('/track'); }}>Map and chat</button>
+            <PaymentActions r={r} user={user} />
           </div>
         </Reveal>))}</div>
     </div>);

@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { api } from './api';
 import { Reveal, href, peso } from './ui';
 import { LogoMark, Wordmark } from './Logo';
+import ReviewFeed from './Reviews';
 const Hero3D = lazy(() => import('./Hero3D'));
 
 const MQ = ['24/7 dispatch', 'Certified mechanics', 'Live tracking', 'Secure payments', 'Real-time chat', 'Works offline'];
@@ -16,7 +17,7 @@ export default function Landing({ user }) {
   const [c, setC] = useState({}), [stats, setStats] = useState(null), [fees, setFees] = useState(null), [news, setNews] = useState([]);
   useEffect(() => { api('/content').then(setC).catch(() => {}); api('/stats').then(setStats).catch(() => {}); api('/config').then(setFees).catch(() => {}); api('/announcements').then(setNews).catch(() => {}); }, []);
   const words = (c.hero_title || 'Stranded? Help is already moving.').split(' '), last = words.pop();
-  const [to, label] = user ? ['/dashboard', 'Open my portal'] : ['/login/motorist', c.cta_label || 'Request roadside help'];
+  const [to, label] = user ? ['/dashboard', 'Open my portal'] : ['/login', c.cta_label || 'Request roadside help'];
   return (<>
     <section className="hero">
       <Suspense fallback={null}><Hero3D /></Suspense>
@@ -28,7 +29,7 @@ export default function Landing({ user }) {
           <a className="btn" href={href(to)}>{label}</a>
           <button className="btn ghost" onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })}>How it works</button>
         </div>
-        {!user && <p className="muted portal-links">Mechanic? <a href="#/login/mechanic">Sign in here</a> · Staff? <a href="#/login/admin">Admin login</a></p>}
+        {!user && <p className="muted portal-links">Already have an account? <a href="#/login">Log in</a> · Repair vehicles? <a href="#/login/mechanic">Join as a mechanic</a></p>}
         {news[0] && <div className="notice"><b>{news[0].title}</b> {news[0].body}</div>}
       </div>
     </section>
@@ -41,6 +42,8 @@ export default function Landing({ user }) {
           <Reveal key={l} delay={i * 90} className="card stat"><b>{v ?? '—'}</b><span>{l}</span></Reveal>)}
       </div>
     </section>
+
+    <ReviewFeed />
 
     <section className="sec" id="how">
       <Reveal><span className="eyebrow">How it works</span><h2>From breakdown to back on the road in four moves.</h2></Reveal>

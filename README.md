@@ -4,15 +4,17 @@ Node.js API + React PWA + Directus CMS. Motorists pin a breakdown and broadcast 
 
 Requires **Node.js 22.5 or newer** (works on the latest Node, including 25). SQLite is built into Node, so there is nothing to compile.
 
-## Separate portals (one login page and one workspace per role)
-| Portal | Sign in | Workspace |
-|---|---|---|
-| Motorist | http://localhost:5173/#/login/motorist | `/#/motorist` (dashboard, request help, live tracking, my requests) |
-| Mechanic | http://localhost:5173/#/login/mechanic | `/#/mechanic` (dashboard, jobs, live job) |
-| Administrator | http://localhost:5173/#/login/admin | `/#/admin` (dashboard, requests, users, fees, content, reports) |
+## One login, separate portals
+Everyone signs in on the same page, `http://localhost:5173/#/login`, with just email and password (the eye icon shows or hides the password).
+The role is chosen only when creating an account (Motorist or Mechanic). After login the app opens the dashboard for that account:
 
-`/#/login` shows a chooser for all three. A motorist account cannot sign in through the mechanic or admin portal (the API rejects it),
-and a signed-in user who opens another role's URL is sent back to their own portal. Admin has no public sign-up; the default admin is below.
+| Account | Opens |
+|---|---|
+| Motorist | `/#/motorist` (dashboard, request help, live tracking, my requests) |
+| Mechanic | `/#/mechanic` (dashboard, jobs, live job) |
+| Administrator | `/#/admin` (dashboard, requests, users, fees, content, reports) |
+
+A signed-in user who opens another role's URL is sent back to their own portal. Admin has no public sign-up; the default admin is below.
 Each portal has its own accent color (motorist amber, mechanic green, admin violet).
 
 ## Account security and request timeout
@@ -99,3 +101,32 @@ Default: support fee ₱150 (dispatch call) + minor ₱500 / moderate ₱1,500 /
 ## Suggested split for the Major/Minor push rule
 Major: UI + auth, real-time chat + location, notifications + PWA sync, requests CRUD + payments.
 Minor: sidebar/styling, archive view, email templates, admin certification, README/docs.
+
+## New in this update
+| Feature | Where to try it |
+|---|---|
+| **One login page** (email + password, with a show/hide eye). The role is picked only at sign-up; login opens the admin, motorist or mechanic dashboard automatically. | `#/login` |
+| **Reviews with comments and photos** (up to 4 per review, shrunk in the browser before upload). | Motorist: My requests, after a job is completed |
+| **Browse mechanics** on the landing page, a full list with search and sorting, and public profiles with a work gallery (photos from reviews plus the mechanic's own portfolio). | `#/mechanics` |
+| **Payment options**: Cash on Service, GCash, Maya, card (Stripe) and bank transfer. Status is Pending, Paid or Failed. | Motorist: Pay button; Admin: Payments |
+| **Notifications**: in-app bell, browser push and email for bookings, status updates, payments and reviews, with per-user switches. | Bell in the navbar; Profile > Notifications |
+
+### Environment variables (server/.env)
+| Variable | Purpose |
+|---|---|
+| `PAY_METHODS` | Payment options shown to motorists (comma separated: cash,gcash,maya,card,bank) |
+| `GCASH_NAME`, `GCASH_NUMBER`, `MAYA_NAME`, `MAYA_NUMBER` | Where motorists send e-wallet payments |
+| `BANK_NAME`, `BANK_ACCOUNT_NAME`, `BANK_ACCOUNT_NUMBER` | Bank transfer details |
+| `STRIPE_SECRET_KEY` | Real card payments (Stripe sandbox). Empty = card payments are recorded instantly as a demo |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Email. Empty = emails are printed in the server console |
+| `VAPID_PUBLIC`, `VAPID_PRIVATE` | Browser push (create them with `npm --prefix server run vapid`). Empty = push is off, the bell still works |
+| `CLIENT_URL` | Base address used in email and push links (default http://localhost:5173) |
+
+Database changes are applied automatically when the server starts (safe to run again, existing data is kept).
+
+## Real payments (PayMongo)
+Set `PAYMONGO_SECRET_KEY` in `server/.env`. GCash, Maya and card then open the provider's own page (on a phone, the GCash or Maya app),
+and the request is marked **Paid** automatically when the provider confirms. The mechanic has nothing to approve.
+FleetCare also checks pending online payments every 15 seconds, so it works even if the motorist never returns to the site.
+Cash on Service stays hand-to-hand: the mechanic taps "Confirm received". Without a key, card is hidden and GCash/Maya fall back to manual transfer plus a reference number.
+Use `sk_test_...` to try it with test accounts first; `sk_live_...` moves real money.

@@ -11,22 +11,25 @@ import Track from './Track';
 import Orders from './Orders';
 import Jobs from './Jobs';
 import { MotoristHome, MechanicHome, AdminHome } from './Portal';
-import { Users, Fees, Content, Reports } from './Admin';
+import { Users, Fees, Content, Reports, PaymentsPage } from './Admin';
+import PayDialog from './Payments';
 import Profile from './Profile';
+import { MechanicList, MechanicProfile } from './Mechanics';
 import Reset from './Reset';
+import ErrorBoundary from './ErrorBoundary';
 import { LogoMark, Wordmark } from './Logo';
 
 // Nav keys are portal-relative; ui.path() prefixes them with the signed-in role (/motorist, /mechanic, /admin).
 const NAV = {
-  guest: [['/', 'Home'], ['/login/motorist', 'Motorist'], ['/login/mechanic', 'Mechanic'], ['/login/admin', 'Admin']],
+  guest: [['/', 'Home'], ['/login', 'Log in']],
   motorist: [['/dashboard', 'Dashboard'], ['/request', 'Request help'], ['/track', 'Live tracking'], ['/orders', 'My requests']],
   mechanic: [['/dashboard', 'Dashboard'], ['/jobs', 'Jobs'], ['/track', 'Live job']],
-  admin: [['/dashboard', 'Dashboard'], ['/orders', 'Requests'], ['/users', 'Users'], ['/fees', 'Services and fees'], ['/content', 'Content'], ['/reports', 'Reports']],
+  admin: [['/dashboard', 'Dashboard'], ['/orders', 'Requests'], ['/payments', 'Payments'], ['/users', 'Users'], ['/fees', 'Services and fees'], ['/content', 'Content'], ['/reports', 'Reports']],
 };
 const PORTAL = {
   motorist: { '': MotoristHome, request: Request, track: Track, orders: Orders, profile: Profile },
   mechanic: { '': MechanicHome, jobs: Jobs, track: Track, profile: Profile },
-  admin: { '': AdminHome, orders: Orders, users: Users, fees: Fees, content: Content, reports: Reports, profile: Profile },
+  admin: { '': AdminHome, orders: Orders, users: Users, fees: Fees, content: Content, reports: Reports, payments: PaymentsPage, profile: Profile },
 };
 const ROLES = Object.keys(PORTAL);
 
@@ -34,13 +37,15 @@ const ROLES = Object.keys(PORTAL);
 export function resolve(route, user) {
   const [seg, ...rest] = route.split('/').filter(Boolean);
   if (!seg) return { page: Landing, path: '/' };
+  if (seg === 'mechanics') return { page: rest[0] ? MechanicProfile : MechanicList, props: { id: rest[0] }, path: route }; // public pages
   if (seg === 'reset') return { page: Reset, props: { token: rest[0] }, path: route };
   if (seg === 'login') {
     if (user) return { redirect: `/${user.role}` };
-    return rest[0] && !ROLES.includes(rest[0]) ? { redirect: '/login' } : { page: Auth, props: { portal: rest[0] }, path: route };
+    // One login page for everyone. Only /login/motorist and /login/mechanic ("Join as…" links) open sign-up with that role preselected.
+    return rest.length ? (['motorist', 'mechanic'].includes(rest[0]) ? { page: Auth, props: { initialRole: rest[0] }, path: route } : { redirect: '/login' }) : { page: Auth, path: route };
   }
   if (ROLES.includes(seg)) {
-    if (!user) return { redirect: `/login/${seg}` };
+    if (!user) return { redirect: '/login' };
     if (user.role !== seg) return { redirect: `/${user.role}` };
     const page = PORTAL[seg][rest[0] || ''];
     return page ? { page, path: route } : { redirect: `/${seg}` };
@@ -57,15 +62,15 @@ export default function App() {
   useEffect(() => { if (user) connect(); }, [user]);
   const r = resolve(route, user);
   useEffect(() => { if (r.redirect && route !== r.redirect) location.replace('#' + r.redirect); }, [route, user]);
-  useEffect(() => { document.documentElement.dataset.role = user?.role || (route.startsWith('/login/') ? route.split('/')[2] : ''); }, [user, route]);
+  useEffect(() => { if (!user && route.startsWith('/login')) return; document.documentElement.dataset.role = user?.role || ''; }, [user, route]); // the login page sets its own accent
   const Page = r.page || (user ? PORTAL[user.role][''] : Landing);
   const updateUser = (u, t) => { setSession(t || token(), u); setUser(u); };
   const logout = () => { disconnect(); clearSession(); caches?.delete('fc-data-v1'); setUser(null); go('/'); };
   const body = (<>
     <Nav user={user} route={r.path || route} items={NAV[user?.role || 'guest']} onLogout={logout} />
-    <main key={r.path || route}><Page {...r.props} user={user} onAuth={u => { setUser(u); go('/dashboard'); }} /></main>
+    <main key={r.path || route}><ErrorBoundary><Page {...r.props} user={user} onAuth={u => { setUser(u); go('/dashboard'); }} /></ErrorBoundary></main>
     <footer><span className="foot-brand"><LogoMark size={26} /><Wordmark /></span><span>Multi-tier mechanic and roadside assistance platform</span></footer>
-    {user && <Toast />}
+    {user && <><Toast /><PayDialog /></>}
   </>);
   return user ? <Store user={user} updateUser={updateUser}>{body}</Store> : body;
 }

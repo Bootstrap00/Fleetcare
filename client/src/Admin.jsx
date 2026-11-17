@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, token } from './api';
 import { useStore } from './store';
 import { Avatar, Badge, Empty, PageHead, Reveal, Stars, peso } from './ui';
+import { METHOD_LABEL } from './Payments';
 
 export function Users() {
   const { setMsg } = useStore();
@@ -92,7 +93,30 @@ export function Reports() {
         <div className="card"><h3>By severity</h3>{d.bySeverity.length === 0 ? <p className="muted">No data yet.</p> : d.bySeverity.map(x =>
           <div className="meter" key={x.severity}><div><b>{x.severity}</b><span className="muted"> {x.count} requests · {peso(x.revenue)}</span></div><i style={{ width: x.count / maxS * 100 + '%' }} /></div>)}</div>
       </div>
+      <div className="card"><h3>Payments by method</h3>{d.byMethod?.length ? d.byMethod.map(x => <div className="row" key={x.method}><b>{METHOD_LABEL[x.method]}</b><span className="muted">{x.count} payment{x.count === 1 ? '' : 's'} · {peso(x.amount)}</span></div>) : <p className="muted">No paid payments yet.</p>}</div>
       <div className="card"><h3>Top mechanics</h3>{d.mechanics.length === 0 ? <p className="muted">No mechanics yet.</p> : d.mechanics.map(m =>
         <div className="row" key={m.name}><b>{m.name}</b><span className="muted">{m.jobs} jobs · {m.rating ? '★' + m.rating : 'unrated'} · {peso(m.earned)} earned</span></div>)}</div>
+    </div>);
+}
+
+// Transaction records: every payment attempt, with status Pending / Paid / Failed
+export function PaymentsPage() {
+  const { setMsg } = useStore();
+  const [list, setList] = useState(null), [tab, setTab] = useState('all');
+  const refresh = () => api('/payments').then(setList).catch(e => setMsg(e.message));
+  useEffect(() => { refresh(); }, []);
+  const settle = (id, paid) => api(`/payments/${id}/confirm`, { method: 'POST', body: { paid } }).then(refresh).catch(e => setMsg(e.message));
+  const shown = (list || []).filter(p => tab === 'all' || p.status === tab);
+  return (
+    <div className="page">
+      <PageHead eyebrow="Transactions" title="Payments" sub="Every payment attempt with its status. Cash, e-wallet and bank payments wait for the mechanic or an admin to confirm." />
+      <div className="seg">{['all', 'pending', 'paid', 'failed'].map(s => <button key={s} className={tab === s ? 'on' : ''} onClick={() => setTab(s)}>{s}</button>)}</div>
+      {list && !shown.length && <Empty title="No payments here yet" />}
+      <div className="stack">{shown.map(p => (
+        <Reveal key={p.id} className="card req">
+          <div className="req-main"><div className="row-top"><b>#{p.request_id}</b><span className="sev-tag">{METHOD_LABEL[p.method]}</span><span className={'badge pay-' + p.status}>{p.status}</span><b>{peso(p.amount)}</b></div>
+            <small className="muted">{p.motorist_name} → {p.mechanic_name || 'no mechanic'}{p.reference ? ` · ref ${p.reference}` : ''} · {String(p.created_at).slice(0, 16)}{p.note ? ` · ${p.note}` : ''}</small></div>
+          {p.status === 'pending' && !p.provider_session && <div className="actions"><button className="btn sm" onClick={() => settle(p.id, true)}>Confirm received</button><button className="btn danger sm" onClick={() => settle(p.id, false)}>Mark failed</button></div>}
+        </Reveal>))}</div>
     </div>);
 }
