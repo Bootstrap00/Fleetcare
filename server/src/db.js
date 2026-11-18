@@ -45,3 +45,5 @@ export const getFees = () => {
   return f;
 };
 export default db;
+// Add to server/src/db.js
+export const assignmentsSchema = `CREATE TABLE IF NOT EXISTS assignments (id INT);`;
