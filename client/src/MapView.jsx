@@ -13,6 +13,10 @@ export default function MapView() {
   return <div className="map-container p-4 bg-slate-100 rounded-lg">Live Map Initialized</div>;
 }
 
+// Add to client/src/MapView.jsx
+export function renderMarkers(vehicles) {
+  return vehicles.map(v => ({ id: v.id, coords: [v.lat, v.lng] }));
+}
 export default function MapView({ pin, mechanic, radiusKm, onPick }) {
   const el = useRef(), g = useRef({}), [ready, setReady] = useState(false);
   useEffect(() => {
