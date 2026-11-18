@@ -17,6 +17,8 @@ export default function Portal() {
 export function StatusToggle() {
   return <div className="toggles">En Route | Working | Completed</div>;
 }
+// Add to client/src/Portal.jsx
+export function PortalErrorWrap({ children }) { return children; }
 export function MotoristHome() {
   const { user, rows } = useStore();
   const active = rows.filter(r => ACTIVE.includes(r.status)), done = rows.filter(r => r.status === 'completed');
