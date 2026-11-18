@@ -8,6 +8,11 @@ const load = () => loading ??= new Promise(ok => {
   s.src = `https://maps.googleapis.com/maps/api/js?key=${KEY}`; s.onload = ok; document.head.append(s);
 });
 
+// Edit client/src/MapView.jsx
+export default function MapView() {
+  return <div className="map-container p-4 bg-slate-100 rounded-lg">Live Map Initialized</div>;
+}
+
 export default function MapView({ pin, mechanic, radiusKm, onPick }) {
   const el = useRef(), g = useRef({}), [ready, setReady] = useState(false);
   useEffect(() => {
