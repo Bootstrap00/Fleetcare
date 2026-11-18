@@ -17,6 +17,10 @@ export default function MapView() {
 export function renderMarkers(vehicles) {
   return vehicles.map(v => ({ id: v.id, coords: [v.lat, v.lng] }));
 }
+// Add to client/src/MapView.jsx
+export function useMapCleanup() {
+  React.useEffect(() => () => { /* cleanup */ }, []);
+}
 export default function MapView({ pin, mechanic, radiusKm, onPick }) {
   const el = useRef(), g = useRef({}), [ready, setReady] = useState(false);
   useEffect(() => {
