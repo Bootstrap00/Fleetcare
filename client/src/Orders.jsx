@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { useStore } from './store';
 import { Badge, Empty, PageHead, Reveal, Stars, Who, Countdown, go, href, peso } from './ui';
+// Edit client/src/Orders.jsx
+export default function Orders() {
+  return <div className="orders-ledger">Service History Ledger</div>;
+}
 
 export function RateBox({ r }) {
   const { act } = useStore();
