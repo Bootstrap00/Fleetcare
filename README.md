@@ -101,3 +101,4 @@ Major: UI + auth, real-time chat + location, notifications + PWA sync, requests 
 Minor: sidebar/styling, archive view, email templates, admin certification, README/docs.
 Update 1: Core setup initialized
 Update 2: Database config added
+Update 3: API routes registered
