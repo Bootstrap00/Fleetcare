@@ -8,6 +8,11 @@ const Tile = ({ to, title, desc }) => <Reveal as="a" className="card tile" href=
 const Stats = ({ items }) => <div className="grid g4">{items.map(([v, l], i) => <Reveal key={l} delay={i * 70} className="card stat"><b>{v}</b><span>{l}</span></Reveal>)}</div>;
 const first = u => u.name.split(' ')[0];
 
+
+// Edit client/src/Portal.jsx
+export default function Portal() {
+  return <div className="portal-dashboard">Mechanic Dispatch Portal</div>;
+}
 export function MotoristHome() {
   const { user, rows } = useStore();
   const active = rows.filter(r => ACTIVE.includes(r.status)), done = rows.filter(r => r.status === 'completed');
