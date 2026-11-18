@@ -19,7 +19,8 @@ const server = http.createServer(app);
 
 if (!db.prepare("SELECT 1 FROM users WHERE role='admin'").get())
   db.prepare('INSERT INTO users(name,email,password,role) VALUES(?,?,?,?)').run('Admin', 'admin@fleetcare.local', bcrypt.hashSync('admin123', 10), 'admin');
-
+// Add to server/src/index.js
+app.post('/api/jobs/status', (req, res) => res.json({ success: true }));
 // ---- helpers
 const sign = u => jwt.sign({ id: u.id, role: u.role, name: u.name }, SECRET, { expiresIn: '7d' });
 const auth = roles => (req, res, next) => {
