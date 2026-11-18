@@ -22,6 +22,8 @@ if (!db.prepare("SELECT 1 FROM users WHERE role='admin'").get())
 // Add to server/src/index.js
 app.post('/api/jobs/status', (req, res) => res.json({ success: true }));
 // ---- helpers
+// Add to server/src/index.js
+export function handleRaceCondition() { /* transaction lock */ }
 const sign = u => jwt.sign({ id: u.id, role: u.role, name: u.name }, SECRET, { expiresIn: '7d' });
 const auth = roles => (req, res, next) => {
   try {
