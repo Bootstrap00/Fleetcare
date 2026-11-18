@@ -3,6 +3,9 @@
 Node.js API + React PWA + Directus CMS. Motorists pin a breakdown and broadcast a distress radius; certified mechanics inside the radius get a push/email alert, every mechanic can view open requests (nearest first, with an in-range / outside-range note), the first certified mechanic to accept gets the job, chat, share live location, and get paid through Stripe sandbox.
 
 Requires **Node.js 22.5 or newer** (works on the latest Node, including 25). SQLite is built into Node, so there is nothing to compile.
+<!-- Add to README.md -->
+## Mechanic Workflow
+Dispatch and tracking instructions.
 
 ## Separate portals (one login page and one workspace per role)
 | Portal | Sign in | Workspace |
