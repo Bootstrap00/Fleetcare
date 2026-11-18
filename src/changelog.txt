@@ -4,3 +4,4 @@ API routing: Core endpoints registered
 Authentication: Middleware and security setup
 Frontend UI: Dashboard components scaffolded
 WebSockets: Real-time event listeners active
+Mapping: Leaflet container integration
