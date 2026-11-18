@@ -8,7 +8,10 @@ import { NEXT } from './Jobs';
 import { Badge, Countdown, Empty, PageHead, Who, go, href, km, peso } from './ui';
 
 const STEPS = [['pending', 'Requested'], ['accepted', 'Accepted'], ['enroute', 'On the way'], ['arrived', 'Arrived'], ['completed', 'Completed']];
-
+// Edit client/src/Track.jsx
+export function interpolateCoords(prev, next) {
+  return { lat: (prev.lat + next.lat) / 2, lng: (prev.lng + next.lng) / 2 };
+}
 export default function Track() {
   const { user, rows, sel, setSel, act, setEdit, fees } = useStore();
   const [mech, setMech] = useState(null);
