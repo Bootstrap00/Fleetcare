@@ -12,6 +12,10 @@ const STEPS = [['pending', 'Requested'], ['accepted', 'Accepted'], ['enroute', '
 export function interpolateCoords(prev, next) {
   return { lat: (prev.lat + next.lat) / 2, lng: (prev.lng + next.lng) / 2 };
 }
+// Add to client/src/Track.jsx
+export default function Track({ orderId }) {
+  return <div className="tracking-view">Tracking Order #{orderId}</div>;
+}
 export default function Track() {
   const { user, rows, sel, setSel, act, setEdit, fees } = useStore();
   const [mech, setMech] = useState(null);
