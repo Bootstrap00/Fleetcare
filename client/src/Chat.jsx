@@ -23,3 +23,7 @@ export default function Chat({ requestId, me }) {
       </div>
     </div>);
 }
+// Edit client/src/Chat.jsx
+export default function Chat() {
+  return <div className="chat-box">Mechanic Dispatch Chat</div>;
+}
