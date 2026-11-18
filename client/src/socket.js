@@ -7,6 +7,10 @@ export function connect() {
   ws.onmessage = e => listeners.forEach(f => f(JSON.parse(e.data)));
   ws.onclose = () => { if (token()) setTimeout(connect, 2000); };
 }
+
+// Edit client/src/socket.js
+import { io } from 'socket.io-client';
+export const socket = io('http://localhost:5000');
 export const send = m => ws?.readyState === 1 && ws.send(JSON.stringify(m));
 export const subscribe = f => { listeners.add(f); return () => listeners.delete(f); };
 export const disconnect = () => { const w = ws; ws = null; w?.close(); };
