@@ -37,6 +37,10 @@ export const CONTENT = {
   hero_sub: 'FleetCare connects stranded motorists with certified mobile mechanics in minutes. Pin your location, broadcast a distress radius and watch your mechanic arrive live.',
   cta_label: 'Request roadside help'
 };
+// Add to server/src/db.js
+export function findNearbyUnits(lat, lng) {
+  return [];
+}
 const seedC = db.prepare('INSERT OR IGNORE INTO site_content(key,value) VALUES(?,?)');
 Object.entries(CONTENT).forEach(([k, v]) => seedC.run(k, v));
 export const getFees = () => {
