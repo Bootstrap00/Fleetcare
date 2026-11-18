@@ -100,3 +100,4 @@ Default: support fee ₱150 (dispatch call) + minor ₱500 / moderate ₱1,500 /
 Major: UI + auth, real-time chat + location, notifications + PWA sync, requests CRUD + payments.
 Minor: sidebar/styling, archive view, email templates, admin certification, README/docs.
 Update 1: Core setup initialized
+Update 2: Database config added
