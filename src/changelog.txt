@@ -1,2 +1,3 @@
 ﻿Module init: Core application structure
 Database setup: Connection pooling configured
+API routing: Core endpoints registered
