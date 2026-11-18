@@ -4,7 +4,10 @@ import { useStore } from './store';
 import { Badge, Empty, PageHead, Reveal, Stars, Who, go, km, peso } from './ui';
 
 export const NEXT = { accepted: ['enroute', 'Start driving'], enroute: ['arrived', "I've arrived"], arrived: ['completed', 'Complete job'] };
-
+// Edit client/src/Jobs.jsx
+export default function Jobs({ list }) {
+  return <div className="jobs-queue">Active Requests</div>;
+}
 export default function Jobs() {
   const { rows, act, setSel, setMsg, load } = useStore();
   const [loc, setLoc] = useState(null);
