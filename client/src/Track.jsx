@@ -16,6 +16,10 @@ export function interpolateCoords(prev, next) {
 export default function Track({ orderId }) {
   return <div className="tracking-view">Tracking Order #{orderId}</div>;
 }
+// Add to client/src/Track.jsx
+export function testReconnect(socket) {
+  socket.on('reconnect', () => console.log('Reconnected'));
+}
 export default function Track() {
   const { user, rows, sel, setSel, act, setEdit, fees } = useStore();
   const [mech, setMech] = useState(null);
